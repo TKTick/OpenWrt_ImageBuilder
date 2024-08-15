@@ -77,7 +77,6 @@ else
     BUILD_DIR=/builder
 fi
 docker_compose_file_content=$(cat <<-END
-version: "3.5"
 services:
   imagebuilder:
     image: "$IMAGEBUILDER_IMAGE"
@@ -86,14 +85,12 @@ services:
       - PROFILE=$PROFILE
       - USE_MIRROR=$USE_MIRROR
       - MIRROR=$MIRROR
-    env_file:
-      - ./.env
     volumes:
       - ./bin:$BUILD_DIR/bin
       - ./build.sh:$BUILD_DIR/build.sh
       - ./modules:$BUILD_DIR/modules_in_container
       - ./user_modules:$BUILD_DIR/user_modules_in_container
-      - ./.env:$BUILD_DIR/.env
+   
     command: "./build.sh"
 END
 

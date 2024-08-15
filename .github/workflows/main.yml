@@ -1,43 +1,114 @@
-# This is a basic workflow to help you get started with Actions
-
 name: CI
-
-# Controls when the workflow will run
 on:
-  # Triggers the workflow on push or pull request events but only for the "master" branch
-  push:
-    branches: [ "master" ]
-    paths:
-      - '**'
-      - '!README*'
-      - '!changelog.txt'
-
-  pull_request:
-    branches: [ "master" ]
-
-  # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
+    inputs:
+      IMAGE:
+        description: '选择预构建固件'
+        required: true
+        type: choice
+        default: 'immortalwrt'
+        options:
+          - 'immortalwrt'
+          - 'openwrt'
+      IMAGE-TARGET:
+        description: '选择编译目标平台'
+        required: true
+        default: 'mediatek-filogic'
+        type: choice
+        options: 
+          - 'mediatek-filogic'
+      VERSION:
+        description: '选择编译版本'
+        required: true
+        default: '23.05.3'
+        type: choice
+        options:
+          - '23.05.3'
+          # - 'SNAPSHOT' # 疑似存在问题
+      DEVICE:
+        description: '选择编译型号'
+        required: true
+        type: choice
+        options: 
+          - 'cmcc_rax3000m-nand-ubootmod'
+      PPPOE_USERNAME:
+        description: 'PPPOE拨号用户名'
+        required: false
+        default: ''
+      PPPOE_PASSWORD:
+        description: 'PPPOE拨号密码'
+        required: false
+        default: ''
+      LAN_IP:
+        description: 'LAN默认IP地址'
+        required: false
+        default: '192.168.2.1'
+      CLASH_CONFIG_URL:
+        description: 'CLASH配置地址,需确保已选择相关软件包'
+        required: false
+        default: ''
 
-# A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
-  # This workflow contains a single job called "build"
   build:
-    # The type of runner that the job will run on
     runs-on: ubuntu-latest
-
-    # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v3
+      # Checkout code
+      - name: Checkout code
+        uses: actions/checkout@main
 
-      # Runs a single command using the runners shell
-      - name: Build image
+      # 初始化环境变量
+      - name: Initialize environment variables
+        id: env-setup
         run: |
-          echo "PPPOE_USERNAME=123" >> modules/network/.env
-          echo "PPPOE_PASSWORD=123" >> modules/network/.env
-          echo "LAN_IP=192.168.1.1" >> modules/network/.env
-          echo "CLASH_CONFIG_URL=https://gist.github.com/EkkoG/20a52db0169c4a4769689521b1c5500e/raw/cf61a9397d0bdbd5b6bbad8fbb388ec851116470/clash_example.yaml" >> modules/openclash/.env
-          echo "MODULES=openclash openclash-as-default" > .env
-          ./run.sh --image=openwrt/imagebuilder:x86-64-23.05.0-rc3
-          ./run.sh --image=openwrt/imagebuilder:x86-64-22.03.3  
-          ./run.sh --image=openwrt/imagebuilder:x86-64-21.02.7
+          # 拼接最终镜像名称
+          # 非snapshot版本拼接为immortalwrt/imagebuilder:mediatek-filogic-openwrt-23.05.3
+          # snapshot版本则拼接为immortalwrt/imagebuilder:mediatek-filogic-snapshot
+          # 如果选择是openwrt snapshot则为openwrt/imagebuilder:mediatek-filogic-SNAPSHOT
+          if [[ "${{ inputs.VERSION }}" == "SNAPSHOT" ]]; then
+            if [[ "${{ inputs.IMAGE }}" == "openwrt" ]]; then
+              echo "FINAL_IMAGE=openwrt/imagebuilder:${{ inputs.IMAGE-TARGET }}-SNAPSHOT" >> $GITHUB_ENV
+            else
+              echo "FINAL_IMAGE=immortalwrt/imagebuilder:${{ inputs.IMAGE-TARGET}}-snapshot" >> $GITHUB_ENV
+            fi
+          else
+            echo "FINAL_IMAGE=${{ inputs.IMAGE }}/imagebuilder:${{ inputs.IMAGE-TARGET }}-openwrt-${{ inputs.VERSION }}" >> $GITHUB_ENV
+          fi
+
+      # 执行构建固件指令
+      - name: Build firmware
+        id: build-image
+        run: |
+          if [[ "${{ inputs.PPPOE_USERNAME }}" != "" ]]; then
+            echo "PPPOE_USERNAME=${{ inputs.PPPOE_USERNAME }}" >> modules/network/.env
+            echo "PPPOE_PASSWORD=${{ inputs.PPPOE_PASSWORD }}" >> modules/network/.env
+          fi
+          echo "LAN_IP=${{ inputs.LAN_IP }}" >> modules/network/.env
+          if [[ "${{ inputs.CLASH_CONFIG_URL }}" != "" ]]; then
+            echo "CLASH_CONFIG_URL=${{ inputs.CLASH_CONFIG_URL }}" >> modules/openclash/.env
+          fi
+          ./run.sh --image=$FINAL_IMAGE --profile=${{ inputs.DEVICE }} 
+          echo "FILE_DATE=_$(date +"%Y%m%d%H%M")" >> $GITHUB_ENV
+      
+      # 上传bin目录所有文件，默认不启用
+      # - name: Upload all compilation products
+      #   uses: actions/upload-artifact@main
+      #   with:
+      #     name: allfile-${{ inputs.IMAGE }}-${{ inputs.VERSION }}-${{ inputs.IMAGE-TARGET }}-${{ inputs.DEVICE }}${{ env.FILE_DATE }}
+      #     path: bin/
+        
+      # 整理固件文件
+      - name: Organize firmware-related files
+        id: organize-files
+        run: |
+          cd bin/targets/*/*
+          rm -rf packages/
+          echo "FIRMWARE=$PWD" >> $GITHUB_ENV
+          echo "status=success" >> $GITHUB_OUTPUT
+          
+
+      # 上传固件目录
+      - name: Upload firmware directory
+        uses: actions/upload-artifact@main
+        with:
+          name: ${{ inputs.IMAGE }}-${{ inputs.VERSION }}-${{ inputs.IMAGE-TARGET }}-${{ inputs.DEVICE }}${{ env.FILE_DATE }}
+          path: ${{ env.FIRMWARE }}
