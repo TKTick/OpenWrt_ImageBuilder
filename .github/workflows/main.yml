@@ -30,7 +30,7 @@ on:
         required: true
         type: choice
         options: 
-          - 'cmcc_rax3000m-nand-ubootmod'
+          - 'cmcc_rax3000m'
       PPPOE_USERNAME:
         description: 'PPPOE拨号用户名'
         required: false
