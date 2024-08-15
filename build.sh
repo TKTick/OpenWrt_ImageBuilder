@@ -1,6 +1,6 @@
 #!/bin/bash -e
 
-default_modules="add-all-device-to-lan  ib argon base network opkg-mirror prefer-ipv6-settings system tools usb"
+default_modules="ib argon base network opkg-mirror prefer-ipv6-settings system tools usb"
 # 默认模块：将所有设备设置成lan argon主题 基础软件包 网络设置 opkg镜像 ipv6优先设置 系统时区配置 一些工具 usb所需模块
 
 MODULES=$1
